@@ -1,0 +1,116 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lyftr-backend
+  namespace: lyftr
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: lyftr-backend
+  template:
+    metadata:
+      labels:
+        app: lyftr-backend
+    spec:
+      containers:
+        - name: backend
+          image: cwlumm/lyftr-backend:v0.1.0-beta.8
+          env:
+            - { name: ENV, value: "production" }
+            - { name: PORT, value: "3000" }
+            - { name: CORS_ORIGIN, value: "https://lyftr.lan.home" }
+            - { name: DB_TYPE, value: "sqlite" }
+            - { name: DB_PATH, value: "/app/data/lyftr.db" }
+            - { name: REGISTRATION, value: "first-user" }
+            - { name: DEMO_MODE, value: "false" }
+          envFrom:
+            - secretRef:
+                name: lyftr-secrets
+          ports:
+            - name: http
+              containerPort: 3000
+          volumeMounts:
+            - { name: data, mountPath: /app/data }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: lyftr-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lyftr-backend
+  namespace: lyftr
+spec:
+  selector:
+    app: lyftr-backend
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lyftr-frontend
+  namespace: lyftr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lyftr-frontend
+  template:
+    metadata:
+      labels:
+        app: lyftr-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: cwlumm/lyftr-frontend:v0.1.0-beta.8
+          env:
+            - { name: BACKEND_ORIGIN, value: "lyftr-backend:3000" }
+          ports:
+            - name: http
+              containerPort: 80
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits: { memory: 128Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet: { path: /, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lyftr-frontend
+  namespace: lyftr
+spec:
+  selector:
+    app: lyftr-frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
